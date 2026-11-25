@@ -79,7 +79,10 @@ python3 tests/recount_ref.py 5
   - The unlabeled column k = 0 matches A048194 (2, 4, 9, 21, 56). This is consistent with Textor,
     Idelberger and Liskiewicz (2015).
 - **Unlabeled right edge.** For n <= 4 it agrees with the list of unlabeled essential graphs in
-  Andersson, Madigan and Perlman (1997), Table 1. An independent reviewer's count based on skeletons
+  Andersson, Madigan and Perlman (1997), Table 1. For n <= 5 it agrees with the catalogue of
+  non-isomorphic largest chain graphs in Volf and Studeny (1999), Section 4: counting the
+  catalogue entries marked as equivalent to a DAG gives 20 for n = 4 and 142 for n = 5. The paper
+  does not print these totals. An independent reviewer's count based on skeletons
   and v-structures, using no d-separation code, gives 2, 5, 20, 142, 2201.
 - **Row n = 7 uses hashed signatures.** The run has to use 128-bit fingerprints of the signatures, so
   a collision could merge two classes, but nothing can split one. Three runs with different hash
@@ -105,8 +108,8 @@ with a control query that finds A007984). None of these were found:
 - the unlabeled Markov equivalence class counts 2, 5, 20, 142, 2201.
 
 A full-text review of the literature found no published counts of these classes for 1 <= k <= n-3.
-The k = 0 columns are known (see above). For unlabeled essential graphs, only n <= 4 is implicit in
-Andersson, Madigan and Perlman (1997).
+The k = 0 columns are known (see above). For unlabeled essential graphs, the counts up to n = 5 are implicit in
+Andersson, Madigan and Perlman (1997) and Volf and Studeny (1999); n = 6 (2201) was not found.
 
 ## References
 
@@ -121,6 +124,8 @@ Andersson, Madigan and Perlman (1997).
 - K. Lee, B. Ribeiro, M. Kocaoglu. Constraint-based causal discovery from a collection of
   conditioning sets. UAI 2025, PMLR 286, 2486-2516
 - R. D. Shachter. Bayes-Ball: The rational pastime. UAI 1998. arXiv:1301.7412
+- M. Volf, M. Studeny. A graphical characterization of the largest chain graphs. Int. J. Approx.
+  Reasoning 20 (1999) 209-236. doi:10.1016/S0888-613X(99)00003-1
 - J. Textor, A. Idelberger, M. Liskiewicz. Learning from pairwise marginal independencies.
   UAI 2015. arXiv:1508.00280
 - M. Wienoebst, M. Liskiewicz. Recovering causal structures from low-order conditional
