@@ -1,0 +1,11 @@
+# binaries
+kmec
+kmec2
+kmec2s
+kmec_unl
+tests/test_bayesball
+*.o
+# local and secret files
+.env
+.DS_Store
+__pycache__/

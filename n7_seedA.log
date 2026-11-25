@@ -1,0 +1,19 @@
+n=7 labeled DAGs=1138779265
+     2791.72 real     13732.80 user      3562.73 sys
+         28302409728  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+           362421476  page reclaims
+                  30  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+              851595  voluntary context switches
+            96568605  involuntary context switches
+     108806395492936  instructions retired
+      60007908900242  cycles elapsed
+         29448738968  peak memory footprint

@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use these counts or this code, please cite it as below."
+title: "Counts of k-Markov equivalence classes of directed acyclic graphs"
+authors:
+  - family-names: Kao
+    given-names: Ming-Chih
+    alias: koolkao
+version: 1.0.0
+date-released: 2026-11-25
+license: MIT
+repository-code: "https://github.com/koolkao/k-markov-equivalence-counts"
+keywords:
+  - causal discovery
+  - Markov equivalence
+  - k-Markov equivalence
+  - d-separation
+  - directed acyclic graphs
+  - enumeration

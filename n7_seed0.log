@@ -1,0 +1,86 @@
+progress: 16777216 DAGs
+progress: 33554432 DAGs
+progress: 50331648 DAGs
+progress: 67108864 DAGs
+progress: 83886080 DAGs
+progress: 100663296 DAGs
+progress: 117440512 DAGs
+progress: 134217728 DAGs
+progress: 150994944 DAGs
+progress: 167772160 DAGs
+progress: 184549376 DAGs
+progress: 201326592 DAGs
+progress: 218103808 DAGs
+progress: 234881024 DAGs
+progress: 251658240 DAGs
+progress: 268435456 DAGs
+progress: 285212672 DAGs
+progress: 301989888 DAGs
+progress: 318767104 DAGs
+progress: 335544320 DAGs
+progress: 352321536 DAGs
+progress: 369098752 DAGs
+progress: 385875968 DAGs
+progress: 402653184 DAGs
+progress: 419430400 DAGs
+progress: 436207616 DAGs
+progress: 452984832 DAGs
+progress: 469762048 DAGs
+progress: 486539264 DAGs
+progress: 503316480 DAGs
+progress: 520093696 DAGs
+progress: 536870912 DAGs
+progress: 553648128 DAGs
+progress: 570425344 DAGs
+progress: 587202560 DAGs
+progress: 603979776 DAGs
+progress: 620756992 DAGs
+progress: 637534208 DAGs
+progress: 654311424 DAGs
+progress: 671088640 DAGs
+progress: 687865856 DAGs
+progress: 704643072 DAGs
+progress: 721420288 DAGs
+progress: 738197504 DAGs
+progress: 754974720 DAGs
+progress: 771751936 DAGs
+progress: 788529152 DAGs
+progress: 805306368 DAGs
+progress: 822083584 DAGs
+progress: 838860800 DAGs
+progress: 855638016 DAGs
+progress: 872415232 DAGs
+progress: 889192448 DAGs
+progress: 905969664 DAGs
+progress: 922746880 DAGs
+progress: 939524096 DAGs
+progress: 956301312 DAGs
+progress: 973078528 DAGs
+progress: 989855744 DAGs
+progress: 1006632960 DAGs
+progress: 1023410176 DAGs
+progress: 1040187392 DAGs
+progress: 1056964608 DAGs
+progress: 1073741824 DAGs
+progress: 1090519040 DAGs
+progress: 1107296256 DAGs
+progress: 1124073472 DAGs
+n=7 labeled DAGs=1138779265
+     1139.86 real     12532.86 user       130.00 sys
+         28658892800  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            12103544  page reclaims
+                   1  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  16  voluntary context switches
+             8389166  involuntary context switches
+     103534922996358  instructions retired
+      44433886968284  cycles elapsed
+         30800877672  peak memory footprint
