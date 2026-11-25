@@ -1,5 +1,7 @@
 # Counts of k-Markov equivalence classes of DAGs
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24544724.svg)](https://doi.org/10.5281/zenodo.24544724)
+
 T(n,k) is the number of equivalence classes of directed acyclic graphs (DAGs) on n nodes, where two
 DAGs are equivalent if they entail the same d-separation statements u ⊥ v | S for every conditioning
 set S ⊆ V \ {u, v} with |S| <= k (0 <= k <= n-2).
@@ -133,4 +135,5 @@ Andersson, Madigan and Perlman (1997) and Volf and Studeny (1999); n = 6 (2201) 
 
 ## License and citation
 
-MIT (see `LICENSE`). To cite, see `CITATION.cff`.
+MIT (see `LICENSE`). Archived on Zenodo: doi:10.5281/zenodo.24544724 (all versions), and
+doi:10.5281/zenodo.24544725 for v1.0.1. To cite, see `CITATION.cff`.

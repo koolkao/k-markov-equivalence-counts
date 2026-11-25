@@ -8,6 +8,7 @@ authors:
 version: 1.0.1
 date-released: 2026-11-25
 license: MIT
+doi: 10.5281/zenodo.24544724
 repository-code: "https://github.com/koolkao/k-markov-equivalence-counts"
 keywords:
   - causal discovery
