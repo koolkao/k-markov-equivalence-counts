@@ -123,8 +123,9 @@ python3 tests/recount_ref.py 5
   - The DAG count equals A003087(9) = 3424938010; T(9,0) = A046165(9) = 152424420 and
     U(9,0) = A048194(9) = 2223.
   - The run used the source of commit a86263f (`n9_k0-2_source.sha256`); log `n9_k0-2.log`
-    (3.1 hours on 14 cores of an Apple M4 Pro, peak 4.0 GB). Later commits changed only how slices are
-    numbered and how cluster buckets are split, not the counting.
+    (3.1 hours on 14 cores of an Apple M4 Pro, peak 4.0 GB). Later commits changed slice numbering, cluster
+    bucket splitting, input parsing and error checks; the counting code (signatures, canonical forms,
+    class sets) is unchanged.
   - The same counting code reproduces row n = 7 of `results_exact.txt` in `direct` mode, and rows
     n = 7 and 8 in cluster mode (bucket sums equal the exact counts).
 - **Row n = 7 with hashed signatures (`kmec2.c`), now confirmed exactly by `kmec_iso.c`.** The run has to use 128-bit fingerprints of the signatures, so
