@@ -9,3 +9,4 @@ tests/test_bayesball
 .env
 .DS_Store
 __pycache__/
+kmec_iso

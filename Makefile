@@ -4,13 +4,15 @@ CC ?= cc
 CFLAGS ?= -O3 -march=native -pthread
 THREADS ?= 14
 
-all: kmec kmec2 kmec_unl tests/test_bayesball
+all: kmec kmec2 kmec_unl kmec_iso tests/test_bayesball
 
 kmec: kmec.c
 	$(CC) $(CFLAGS) -o $@ $<
 kmec2: kmec2.c
 	$(CC) $(CFLAGS) -o $@ $<
 kmec_unl: kmec_unl.c
+	$(CC) $(CFLAGS) -o $@ $<
+kmec_iso: kmec_iso.c
 	$(CC) $(CFLAGS) -o $@ $<
 tests/test_bayesball: tests/test_bayesball.c kmec2.c
 	$(CC) -O2 -pthread -o $@ $<
@@ -37,4 +39,10 @@ check: kmec kmec2 tests/test_bayesball
 	for n in 2 3 4 5 6; do ./kmec2 $$n $$((n-2)) $(THREADS) 3 2>/dev/null; done | diff - results_labeled.txt && echo "kmec2 (seed 3) matches results_labeled.txt"
 	python3 kmec_ref.py 5 2>/dev/null | diff - <(grep '^5 ' results_labeled.txt) && echo "networkx reference matches row n = 5"
 
-.PHONY: all labeled unlabeled n7 check
+# Exact counts via isomorphism classes (needs nauty's geng and directg on PATH).
+# n = 2..7 take seconds; n = 8 takes about 28 minutes and about 31 GB (see README).
+exact: kmec_iso
+	for n in 2 3 4 5 6 7; do ./run_iso.sh $$n 0 $$((n-2)) $(THREADS) > /dev/null; done
+	./run_iso.sh 8 0 6 $(THREADS) > /dev/null
+
+.PHONY: all labeled unlabeled n7 exact check

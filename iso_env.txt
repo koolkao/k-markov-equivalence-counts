@@ -1,0 +1,4 @@
+Apple clang version 21.0.0 (clang-2100.4.1.1)
+Darwin 25.6.0 arm64
+Apple M4 Pro
+nauty 2.9.3 (geng, directg) built from source

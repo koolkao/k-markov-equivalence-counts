@@ -1,0 +1,28 @@
+read 20286025 unlabeled DAGs on 8 nodes
+progress: 2097152 / 20286025 DAGs
+progress: 4194304 / 20286025 DAGs
+progress: 6291456 / 20286025 DAGs
+progress: 8388608 / 20286025 DAGs
+progress: 10485760 / 20286025 DAGs
+progress: 12582912 / 20286025 DAGs
+progress: 14680064 / 20286025 DAGs
+progress: 16777216 / 20286025 DAGs
+progress: 18874368 / 20286025 DAGs
+     1657.57 real      8919.15 user       305.13 sys
+          8041971712  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            29373768  page reclaims
+                   7  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+             2346000  voluntary context switches
+            32086564  involuntary context switches
+     136816912004133  instructions retired
+      30388789033307  cycles elapsed
+         30725306824  peak memory footprint
