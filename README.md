@@ -151,7 +151,7 @@ with a control query that finds A007984). None of these were found:
 - any interior n = 7 term;
 - the unlabeled Markov equivalence class counts 2, 5, 20, 142, 2201.
 
-The n = 8 terms were added later, in v1.1.0.
+The n = 8 terms were added later, in v1.1.0, and the n = 9 terms for k <= 2 in v1.2.0.
 
 A full-text review of the literature found no published counts of these classes for 1 <= k <= n-3.
 The k = 0 columns are known (see above). For unlabeled essential graphs, the counts up to n = 5 are implicit in
