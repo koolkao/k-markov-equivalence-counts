@@ -116,7 +116,7 @@ static void vertex_invariants(const uint64_t *sep, int k, uint64_t *inv){
         memcpy(inv, inv2, sizeof(uint64_t)*n);
     }
 }
-// class hash from the 2-signature (sep must hold at least sizeEnd[KB] entries)
+// class hash from the k-signature (sep must hold at least sizeEnd[k] entries); class_hash uses k = 2
 static uint64_t class_hash_k(const uint64_t *sep, int k){
     uint64_t inv[MAXN]; vertex_invariants(sep, k, inv);
     qsort(inv, n, sizeof inv[0], cmp_u64);
@@ -133,10 +133,12 @@ static BFile *bfiles; static int P_;
 static atomic_int g_slice_next; static int g_part, g_nparts, g_slice_count, g_slice_mod;
 static atomic_uint_fast64_t g_generated;
 
-// slice s of mod: geng split G = 64 (when mod is a multiple of 64) times directg split D = mod/G
+// slice s of mod: geng split G = 64 (when mod is a multiple of 64) times directg split D = mod/G.
+// Diagonal map (d = s/G, g = (s%G + d) % G) is a bijection onto {0..G-1} x {0..D-1}, and it gives a
+// partition part m (slices m, m+M, ...) every geng slice even when M is a multiple of G.
 static void slice_cmd(char *cmd, size_t len, int s, int mod){
-    int G = (mod % 64 == 0) ? 64 : 1, D = mod / G;
-    snprintf(cmd, len, "bash -o pipefail -c 'geng -q %d %d/%d | directg -q -a -T -s%d/%d'", n, s % G, G, s / G, D);
+    int G = (mod % 64 == 0) ? 64 : 1, D = mod / G, d = s / G, g = (s % G + d) % G;
+    snprintf(cmd, len, "bash -o pipefail -c 'geng -q %d %d/%d | directg -q -a -T -s%d/%d'", n, g, G, d, D);
 }
 // read one DAG line; returns 1 on a DAG, 0 at a clean end of stream; dies on anything else
 static int read_dag(FILE *in, Dag *d){
@@ -302,7 +304,7 @@ static void canonicalize(Canon *c, const uint64_t *sep, int k){
 static void pack(const uint64_t *sig, int L, uint8_t *out){ for (int i=0;i<L;i++) for (int b=0;b<MB;b++) out[i*MB+b] = (uint8_t)(sig[i] >> (8*b)); }
 
 static uint16_t (*recs)[MAXN]; static size_t nrecs;
-static int R_P, R_b, R_msub, R_j;
+static int R_P, R_b, R_msub, R_j, R_M;
 static atomic_size_t g_next; static atomic_uint_fast64_t g_kept;
 static void *reduce_worker(void *arg){
     (void)arg;
@@ -316,7 +318,7 @@ static void *reduce_worker(void *arg){
             uint64_t h = class_hash(sep);
             if (h % (uint64_t)R_P != (uint64_t)R_b) { atomic_fetch_add(&g_wrongbucket, 1); continue; }
             compute_sep(&d, sep, sizeEnd[KB], sizeEnd[KMAX]);
-            if (R_msub > 1 && class_hash_k(sep, KMIN) % (uint64_t)R_msub != (uint64_t)R_j) continue;
+            if (R_msub > 1 && mix64(class_hash_k(sep, KMIN) ^ 0x5b5bULL) % (uint64_t)R_msub != (uint64_t)R_j) continue;   /* re-mix: at KMIN == KB the raw hash is fixed mod P */
             kept++;
             for (int k=KMIN;k<=KMAX;k++){ canonicalize(c, sep, k); pack(c->best, sizeEnd[k], key); hset_put(sets[k], key, (uint32_t)c->nbest); }
         }
@@ -344,9 +346,12 @@ static int do_reduce(int argc, char **argv){
         if ((int)gd.gl_pathc != Mfirst) { fprintf(stderr, "ERROR: %zu of %d partition parts done\n", gd.gl_pathc, Mfirst); exit(2); }
         if (tot != A003087[n]) { fprintf(stderr, "ERROR: partition total %llu != A003087(%d)\n", tot, n); exit(2); }
         globfree(&gd);
+        R_M = Mfirst;
     }
-    char pat[4200]; snprintf(pat, sizeof pat, "%s/part*/b%d.bin", in, R_b);
-    glob_t g; if (glob(pat, 0, NULL, &g) != 0) die("no bucket files found");
+    // read exactly the bucket files of parts 0..M-1 (each must exist), never stray part directories
+    glob_t g; memset(&g, 0, sizeof g);
+    g.gl_pathc = (size_t)R_M; g.gl_pathv = xcalloc((size_t)R_M, sizeof(char*));
+    for (int m=0;m<R_M;m++){ char fn[4200]; snprintf(fn, sizeof fn, "%s/part%d/b%d.bin", in, m, R_b); g.gl_pathv[m] = strdup(fn); struct stat st; if (stat(fn, &st)) { fprintf(stderr, "ERROR: missing bucket file %s\n", fn); exit(2); } }
     size_t total = 0;
     for (size_t i=0;i<g.gl_pathc;i++){ struct stat st; if (stat(g.gl_pathv[i], &st)) die("stat failed"); if (st.st_size % (MAXN*2)) die("bucket file size not a multiple of the record size"); total += (size_t)st.st_size / (MAXN*2); }
     recs = malloc(total ? total * sizeof *recs : 1); if (!recs) die("out of memory reading records");

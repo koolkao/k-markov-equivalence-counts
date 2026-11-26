@@ -27,7 +27,8 @@ All counts in `results_exact.txt` are exact.
 
 ## Results
 
-All counts are in `results_exact.txt`, with columns n, k, labeled, unlabeled.
+All counts are in `results_exact.txt`, with columns n, k, labeled, unlabeled. Row n = 9 (k <= 2) is in
+`results_n9_k0-2.txt`, with columns n, k, unlabeled, labeled.
 
 ### Labeled DAGs, T(n,k)
 
@@ -40,6 +41,7 @@ All counts are in `results_exact.txt`, with columns n, k, labeled, unlabeled.
 | 6 | 6424 | 99640 | 554950 | 982070 | 1067825 | | |
 | 7 | 129425 | 4882180 | 66029917 | 213365427 | 299380027 | 312510571 | |
 | 8 | 3731508 | 336500148 | 11541823368 | 78287488144 | 169675040344 | 207448216176 | 212133402500 |
+| 9 | 152424420 | 32030990331 | 2812354404747 | | | | |
 
 ### Up to isomorphism, U(n,k)
 
@@ -52,6 +54,9 @@ All counts are in `results_exact.txt`, with columns n, k, labeled, unlabeled.
 | 6 | 56 | 329 | 1222 | 2015 | 2201 | | |
 | 7 | 164 | 2094 | 18101 | 52851 | 73453 | 76907 | |
 | 8 | 557 | 16512 | 365185 | 2222128 | 4715964 | 5766867 | 5903878 |
+| 9 | 2223 | 160371 | 9420143 | | | | |
+
+Row n = 9 so far covers k = 0, 1, 2 only (`results_n9_k0-2.txt`); k = 3..7 need a cluster (see `cluster/`).
 
 The right edge of this table (2, 5, 20, 142, 2201, 76907, 5903878) is the number of ordinary
 Markov equivalence classes (essential graphs) up to isomorphism.
@@ -64,6 +69,7 @@ Markov equivalence classes (essential graphs) up to isomorphism.
 | `kmec2.c` | Node-by-node DAG enumeration; bitmask Bayes-ball d-separation; 128-bit streamed fingerprints; sharded hash set; pthreads. Usage: `./kmec2 n [kmax] [threads] [seed]` (the built-in usage message omits `seed`) | n <= 7 |
 | `kmec_unl.c` | Unlabeled counts: exact labeled classes, each canonicalized over all n! relabelings; also counts unlabeled DAGs as a check | n <= 6 |
 | `kmec_iso.c` + `run_iso.sh` | Exact labeled and unlabeled counts from nauty's unlabeled DAGs. Canonical forms use relabelings restricted to isomorphism-invariant vertex cells; the number of minimizing relabelings is |Aut|. `run_iso.sh` checks the DAG count against A003087 and fails on any warning | n <= 8 |
+| `kmec_cluster.c` + `cluster/` | Same exact method as `kmec_iso.c`, for n = 9. `direct` mode counts on one machine (memory grows with k); `partition`/`reduce` modes split the DAGs into buckets by a class invariant so a Slurm cluster can count each bucket separately. See `cluster/README.md` | n <= 9 |
 | `kmec_ref.py` | Independent reference using networkx `is_d_separator` (needs networkx >= 3.3) | n <= 5 |
 | `tests/test_bayesball.c` | Checks kmec2's Bayes-ball routine against moralization d-separation on random DAGs, n = 3..8 | |
 | `tests/recount_ref.py` | Independent Python recount with its own d-separation and canonicalization, labeled and unlabeled | n <= 5 |
@@ -113,6 +119,14 @@ python3 tests/recount_ref.py 5
   - Source hash: `iso_source.sha256`. Environment: `iso_env.txt`. Logs: `iso_n7.log`, `iso_n8.log`.
     The n = 8 run was started before `run_iso.sh` existed, but its log shows the A003087(8) DAG
     count and no warnings.
+- **Row n = 9, k = 0..2 (`kmec_cluster direct 9 0 2 14 512`).**
+  - The DAG count equals A003087(9) = 3424938010; T(9,0) = A046165(9) = 152424420 and
+    U(9,0) = A048194(9) = 2223.
+  - The run used the source of commit a86263f (`n9_k0-2_source.sha256`); log `n9_k0-2.log`
+    (3.1 hours on 14 cores of an Apple M4 Pro, peak 4.0 GB). Later commits changed only how slices are
+    numbered and how cluster buckets are split, not the counting.
+  - The same counting code reproduces row n = 7 of `results_exact.txt` in `direct` mode, and rows
+    n = 7 and 8 in cluster mode (bucket sums equal the exact counts).
 - **Row n = 7 with hashed signatures (`kmec2.c`), now confirmed exactly by `kmec_iso.c`.** The run has to use 128-bit fingerprints of the signatures, so
   a collision could merge two classes, but nothing can split one. Three runs with different hash
   initializations give identical counts:
