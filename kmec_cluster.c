@@ -3,7 +3,9 @@
 //
 // Phase 1 (partition), one job-array task per part m of M:
 //   ./kmec_cluster partition n P M m slices_per_part threads outdir
-//   Generates nauty slices m, m+M, m+2M, ... (S of them) of mod M*S (geng -q n res/mod | directg -q -a -T).
+//   Generates slices m, m+M, m+2M, ... (S of them) out of M*S. A slice combines a geng graph split
+//   (geng res/mod) with a directg orientation split (directg -s), which balances the load better
+//   than either alone.
 //   Threads pull slices from a counter. Each DAG is written as 9 uint16 parent masks (18 bytes) to
 //   outdir/part<m>/b<bucket>.bin. The bucket is hash(class invariant) mod P, where the class
 //   invariant is the sorted vertex invariants of the DAG's 2-signature.
@@ -11,15 +13,18 @@
 //
 // Phase 2 (reduce), one task per bucket b (optionally a sub-bucket j of m_sub):
 //   ./kmec_cluster reduce n kmin kmax P b msub j threads indir
-//   Reads indir/part*/b<b>.bin, recomputes each DAG's invariant hash and checks that it belongs to
-//   bucket b. Keeps DAGs with hash mod (P*msub) == b + P*j (msub = 1, j = 0 keeps all of them).
+//   Requires all M parts to be complete (DONE files). Reads indir/part*/b<b>.bin, recomputes each
+//   DAG's 2-signature hash and checks that it belongs to bucket b. With msub > 1, keeps only DAGs whose
+//   kmin-signature hash mod msub == j. The kmin-signature is a class invariant for every k >= kmin and
+//   is much finer than the 2-signature, so large buckets split evenly. msub = 1, j = 0 keeps all.
 //   Canonicalizes the k-signatures (k = kmin..kmax, kmin >= 2) and prints, for each k,
 //   "n k unlabeled labeled" plus a header with the number of DAGs read and kept.
 //
 // Correctness:
 //  * Every DAG in a k-class (k >= 2) has the same 2-signature up to isomorphism, hence the same
-//    hash. So buckets and sub-buckets are disjoint unions of classes, and counts add up. Bucket b of P
-//    is exactly the union of sub-buckets j = 0..msub-1.
+//    bucket; for k >= kmin it also has the same kmin-signature, hence the same sub-bucket. So buckets
+//    and sub-buckets are disjoint unions of classes, and counts add up. Bucket b is exactly the union
+//    of its sub-buckets j = 0..msub-1.
 //  * Canonical forms are exact: lexicographic minimum over relabelings within invariant cells;
 //    |Aut| = number of minimizing relabelings; labeled count = sum of n!/|Aut|.
 #include <stdio.h>
@@ -31,6 +36,8 @@
 #include <stdatomic.h>
 #include <sys/stat.h>
 #include <glob.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #define MAXN 9
 #define MAXS 512
@@ -41,6 +48,7 @@ static int n, KMIN, KMAX, NT;
 static int npairs, pidx[MAXN][MAXN], pu[40], pv[40], MB;
 static int nS; static unsigned Slist[MAXS]; static int Sidx[1 << MAXN]; static int sizeEnd[MAXN];
 static uint64_t nfact = 1;
+static const uint64_t A003087[10] = {1,1,2,6,31,302,5984,243668,20286025,3424938010ULL};
 
 static inline uint64_t mix64(uint64_t z){ z += 0x9e3779b97f4a7c15ULL; z = (z ^ (z>>30)) * 0xbf58476d1ce4e5b9ULL; z = (z ^ (z>>27)) * 0x94d049bb133111ebULL; return z ^ (z>>31); }
 static inline unsigned orset(const unsigned *a, unsigned X){ unsigned r=0; while(X){ int i=__builtin_ctz(X); X&=X-1; r|=a[i]; } return r; }
@@ -109,12 +117,13 @@ static void vertex_invariants(const uint64_t *sep, int k, uint64_t *inv){
     }
 }
 // class hash from the 2-signature (sep must hold at least sizeEnd[KB] entries)
-static uint64_t class_hash(const uint64_t *sep){
-    uint64_t inv[MAXN]; vertex_invariants(sep, KB, inv);
+static uint64_t class_hash_k(const uint64_t *sep, int k){
+    uint64_t inv[MAXN]; vertex_invariants(sep, k, inv);
     qsort(inv, n, sizeof inv[0], cmp_u64);
-    uint64_t h = 0x77ULL; for (int i=0;i<n;i++) h = mix64(h ^ inv[i]);
+    uint64_t h = 0x77ULL ^ ((uint64_t)k << 32); for (int i=0;i<n;i++) h = mix64(h ^ inv[i]);
     return h;
 }
+static uint64_t class_hash(const uint64_t *sep){ return class_hash_k(sep, KB); }
 
 // =====================================================================================
 // Phase 1: partition
@@ -124,6 +133,20 @@ static BFile *bfiles; static int P_;
 static atomic_int g_slice_next; static int g_part, g_nparts, g_slice_count, g_slice_mod;
 static atomic_uint_fast64_t g_generated;
 
+// slice s of mod: geng split G = 64 (when mod is a multiple of 64) times directg split D = mod/G
+static void slice_cmd(char *cmd, size_t len, int s, int mod){
+    int G = (mod % 64 == 0) ? 64 : 1, D = mod / G;
+    snprintf(cmd, len, "bash -o pipefail -c 'geng -q %d %d/%d | directg -q -a -T -s%d/%d'", n, s % G, G, s / G, D);
+}
+// read one DAG line; returns 1 on a DAG, 0 at a clean end of stream; dies on anything else
+static int read_dag(FILE *in, Dag *d){
+    int nv, ne, rc = fscanf(in, "%d %d", &nv, &ne);
+    if (rc == EOF) { if (ferror(in)) die("read error"); return 0; }
+    if (rc != 2 || nv != n || ne < 0 || ne > npairs) die("bad input line");
+    memset(d->par, 0, sizeof d->par);
+    for (int e=0;e<ne;e++){ int a,b; if (fscanf(in, "%d %d",&a,&b)!=2 || a<0||a>=n||b<0||b>=n) die("parse error"); d->par[b] |= 1u<<a; }
+    return 1;
+}
 #define WBUF 4096
 static void *part_worker(void *arg){
     (void)arg;
@@ -135,20 +158,16 @@ static void *part_worker(void *arg){
         if (s >= g_slice_count) break;
         char cmd[256];
         int res = g_part + g_nparts * s;   /* interleaved: part m takes slices m, m+M, m+2M, ... */
-        snprintf(cmd, sizeof cmd, "bash -o pipefail -c 'geng -q %d | directg -q -a -T -s%d/%d'", n, res, g_slice_mod);
+        slice_cmd(cmd, sizeof cmd, res, g_slice_mod);
         FILE *in = popen(cmd, "r"); if (!in) die("popen failed");
-        int nv, ne;
-        while (fscanf(in, "%d %d", &nv, &ne) == 2){
-            if (nv != n || ne < 0 || ne > npairs) die("bad input line");
-            Dag d; memset(d.par, 0, sizeof d.par);
-            for (int e=0;e<ne;e++){ int a,b; if (fscanf(in, "%d %d",&a,&b)!=2 || a<0||a>=n||b<0||b>=n) die("parse error"); d.par[b] |= 1u<<a; }
+        Dag d;
+        while (read_dag(in, &d)){
             dag_prepare(&d); compute_sep(&d, sep, 0, sizeEnd[KB]);
             int b = (int)(class_hash(sep) % (uint64_t)P_);
             for (int x=0;x<MAXN;x++) buf[b][cnt[b]][x] = (uint16_t)(x<n ? d.par[x] : 0);
             if (++cnt[b] == WBUF){ pthread_mutex_lock(&bfiles[b].mu); if (fwrite(buf[b], sizeof buf[b][0], WBUF, bfiles[b].f) != WBUF) die("write failed"); pthread_mutex_unlock(&bfiles[b].mu); cnt[b] = 0; }
             gen++;
         }
-        if (!feof(in)) die("input stream ended with unparsed data");
         int st = pclose(in);
         if (st != 0) { fprintf(stderr, "ERROR: nauty slice %d/%d exited with status %d\n", res, g_slice_mod, st); exit(2); }
     }
@@ -159,12 +178,13 @@ static void *part_worker(void *arg){
 static int do_partition(int argc, char **argv){
     if (argc < 9) die("usage: partition n P M m slices_per_part threads outdir");
     n = atoi(argv[2]); P_ = atoi(argv[3]); int M = atoi(argv[4]), m = atoi(argv[5]), S = atoi(argv[6]); NT = atoi(argv[7]); const char *out = argv[8];
-    if (n < 2 || n > MAXN || P_ < 1 || P_ > 65536 || M < 1 || m < 0 || m >= M || S < 1 || NT < 1 || NT > 1024) die("bad args");
+    if (n < 4 || n > MAXN || P_ < 1 || P_ > 65536 || M < 1 || m < 0 || m >= M || S < 1 || NT < 1 || NT > 1024) die("bad args (n >= 4)");
     setup();
     char dir[4096]; snprintf(dir, sizeof dir, "%s/part%d", out, m);
     mkdir(out, 0755); if (mkdir(dir, 0755) && errno != EEXIST) die("cannot create part directory");
+    { char dn[4200]; snprintf(dn, sizeof dn, "%s/DONE", dir); unlink(dn); }   /* a rerun must not leave a stale DONE */
     bfiles = xcalloc((size_t)P_, sizeof(BFile));
-    for (int b=0;b<P_;b++){ char fn[4200]; snprintf(fn, sizeof fn, "%s/b%d.bin", dir, b); bfiles[b].f = fopen(fn, "wb"); if (!bfiles[b].f) die("cannot open bucket file (check ulimit -n)"); pthread_mutex_init(&bfiles[b].mu, NULL); }
+    for (int b=0;b<P_;b++){ char fn[4200]; snprintf(fn, sizeof fn, "%s/b%d.bin", dir, b); bfiles[b].f = fopen(fn, "wb"); if (!bfiles[b].f) die("cannot open bucket file (check ulimit -n)"); fcntl(fileno(bfiles[b].f), F_SETFD, FD_CLOEXEC); pthread_mutex_init(&bfiles[b].mu, NULL); }
     g_part = m; g_nparts = M; g_slice_count = S; g_slice_mod = M*S;
     pthread_t th[1024];
     for (int i=0;i<NT;i++) if (pthread_create(&th[i], NULL, part_worker, NULL)) die("pthread_create failed");
@@ -172,7 +192,8 @@ static int do_partition(int argc, char **argv){
     for (int b=0;b<P_;b++) if (fclose(bfiles[b].f)) die("close failed");
     char fn[4200]; snprintf(fn, sizeof fn, "%s/DONE", dir);
     FILE *f = fopen(fn, "w"); if (!f) die("cannot write DONE");
-    fprintf(f, "n %d P %d M %d m %d slices %d generated %llu\n", n, P_, M, m, S, (unsigned long long)g_generated); fclose(f);
+    fprintf(f, "n %d P %d M %d m %d slices %d generated %llu\n", n, P_, M, m, S, (unsigned long long)g_generated);
+    if (fclose(f)) die("cannot write DONE");
     fprintf(stderr, "partition n=%d part %d/%d: generated %llu DAGs\n", n, m, M, (unsigned long long)g_generated);
     return 0;
 }
@@ -286,7 +307,6 @@ static atomic_size_t g_next; static atomic_uint_fast64_t g_kept;
 static void *reduce_worker(void *arg){
     (void)arg;
     Canon *c = xcalloc(1, sizeof(Canon)); uint64_t sep[MAXS]; uint8_t key[MAXS*8]; uint64_t kept = 0;
-    uint64_t Pm = (uint64_t)R_P * (uint64_t)R_msub, want = (uint64_t)R_b + (uint64_t)R_P * (uint64_t)R_j;
     for (;;){
         size_t start = atomic_fetch_add(&g_next, 1024); if (start >= nrecs) break;
         size_t end = start + 1024 < nrecs ? start + 1024 : nrecs;
@@ -295,9 +315,9 @@ static void *reduce_worker(void *arg){
             dag_prepare(&d); compute_sep(&d, sep, 0, sizeEnd[KB]);
             uint64_t h = class_hash(sep);
             if (h % (uint64_t)R_P != (uint64_t)R_b) { atomic_fetch_add(&g_wrongbucket, 1); continue; }
-            if (h % Pm != want) continue;
-            kept++;
             compute_sep(&d, sep, sizeEnd[KB], sizeEnd[KMAX]);
+            if (R_msub > 1 && class_hash_k(sep, KMIN) % (uint64_t)R_msub != (uint64_t)R_j) continue;
+            kept++;
             for (int k=KMIN;k<=KMAX;k++){ canonicalize(c, sep, k); pack(c->best, sizeEnd[k], key); hset_put(sets[k], key, (uint32_t)c->nbest); }
         }
     }
@@ -306,15 +326,38 @@ static void *reduce_worker(void *arg){
 static int do_reduce(int argc, char **argv){
     if (argc < 11) die("usage: reduce n kmin kmax P b msub j threads indir");
     n = atoi(argv[2]); KMIN = atoi(argv[3]); KMAX = atoi(argv[4]); R_P = atoi(argv[5]); R_b = atoi(argv[6]); R_msub = atoi(argv[7]); R_j = atoi(argv[8]); NT = atoi(argv[9]); const char *in = argv[10];
-    if (n < 2 || n > MAXN || KMIN < KB || KMAX > n-2 || KMIN > KMAX || R_P < 1 || R_b < 0 || R_b >= R_P || R_msub < 1 || R_j < 0 || R_j >= R_msub || NT < 1 || NT > 1024) die("bad args (note kmin >= 2)");
+    if (n < 4 || n > MAXN || KMIN < KB || KMAX > n-2 || KMIN > KMAX || R_P < 1 || R_b < 0 || R_b >= R_P || R_msub < 1 || R_j < 0 || R_j >= R_msub || NT < 1 || NT > 1024) die("bad args (n >= 4, kmin >= 2)");
     setup();
+    {   // the partition must be complete: M DONE files, all agreeing on n and P, generated total = A003087(n)
+        char dp[4200]; snprintf(dp, sizeof dp, "%s/part*/DONE", in);
+        glob_t gd; if (glob(dp, 0, NULL, &gd) != 0) die("no partition DONE files");
+        unsigned long long tot = 0; int Mfirst = -1;
+        for (size_t i=0;i<gd.gl_pathc;i++){
+            FILE *f = fopen(gd.gl_pathv[i], "r"); if (!f) die("cannot read DONE");
+            int dn, dP, dM, dm, dS; unsigned long long dg;
+            if (fscanf(f, "n %d P %d M %d m %d slices %d generated %llu", &dn, &dP, &dM, &dm, &dS, &dg) != 6) die("bad DONE file");
+            fclose(f);
+            if (dn != n || dP != R_P) die("DONE file does not match n or P");
+            if (Mfirst < 0) Mfirst = dM; else if (dM != Mfirst) die("DONE files disagree on M");
+            tot += dg;
+        }
+        if ((int)gd.gl_pathc != Mfirst) { fprintf(stderr, "ERROR: %zu of %d partition parts done\n", gd.gl_pathc, Mfirst); exit(2); }
+        if (tot != A003087[n]) { fprintf(stderr, "ERROR: partition total %llu != A003087(%d)\n", tot, n); exit(2); }
+        globfree(&gd);
+    }
     char pat[4200]; snprintf(pat, sizeof pat, "%s/part*/b%d.bin", in, R_b);
     glob_t g; if (glob(pat, 0, NULL, &g) != 0) die("no bucket files found");
     size_t total = 0;
     for (size_t i=0;i<g.gl_pathc;i++){ struct stat st; if (stat(g.gl_pathv[i], &st)) die("stat failed"); if (st.st_size % (MAXN*2)) die("bucket file size not a multiple of the record size"); total += (size_t)st.st_size / (MAXN*2); }
     recs = malloc(total ? total * sizeof *recs : 1); if (!recs) die("out of memory reading records");
     nrecs = 0;
-    for (size_t i=0;i<g.gl_pathc;i++){ FILE *f = fopen(g.gl_pathv[i], "rb"); if (!f) die("open failed"); size_t got = fread(recs[nrecs], sizeof *recs, total - nrecs, f); nrecs += got; fclose(f); }
+    for (size_t i=0;i<g.gl_pathc;i++){
+        struct stat st; if (stat(g.gl_pathv[i], &st)) die("stat failed"); size_t want_r = (size_t)st.st_size / (MAXN*2);
+        FILE *f = fopen(g.gl_pathv[i], "rb"); if (!f) die("open failed");
+        size_t got = fread(recs[nrecs], sizeof *recs, want_r, f);
+        if (got != want_r || ferror(f)) die("short read of a bucket file");
+        nrecs += got; fclose(f);
+    }
     if (nrecs != total) die("short read");
     fprintf(stderr, "reduce n=%d k=%d..%d bucket %d/%d sub %d/%d: %zu part files, %zu DAGs\n", n, KMIN, KMAX, R_b, R_P, R_j, R_msub, g.gl_pathc, nrecs);
     for (int k=KMIN;k<=KMAX;k++){ sets[k] = xcalloc(1, sizeof(HSet)); sets[k]->KB_ = (size_t)sizeEnd[k]*MB; sets[k]->RB = sets[k]->KB_ + 4; for (int i=0;i<NSHARD;i++) pthread_mutex_init(&sets[k]->sh[i].mu, NULL); }
@@ -346,23 +389,18 @@ static void *direct_worker(void *arg){
     Canon *c = xcalloc(1, sizeof(Canon)); uint64_t sep[MAXS]; uint8_t key[MAXS*8]; uint64_t gen = 0;
     for (;;){
         int s = atomic_fetch_add(&g_dslice, 1); if (s >= g_dslices) break;
-        char cmd[256]; snprintf(cmd, sizeof cmd, "bash -o pipefail -c 'geng -q %d | directg -q -a -T -s%d/%d'", n, s, g_dslices);
+        char cmd[256]; slice_cmd(cmd, sizeof cmd, s, g_dslices);
         FILE *in = popen(cmd, "r"); if (!in) die("popen failed");
-        int nv, ne;
-        while (fscanf(in, "%d %d", &nv, &ne) == 2){
-            if (nv != n || ne < 0 || ne > npairs) die("bad input line");
-            Dag d; memset(d.par, 0, sizeof d.par);
-            for (int e=0;e<ne;e++){ int a,b; if (fscanf(in, "%d %d",&a,&b)!=2 || a<0||a>=n||b<0||b>=n) die("parse error"); d.par[b] |= 1u<<a; }
+        Dag d;
+        while (read_dag(in, &d)){
             dag_prepare(&d); compute_sep(&d, sep, 0, sizeEnd[KMAX]);
             for (int k=KMIN;k<=KMAX;k++){ canonicalize(c, sep, k); pack(c->best, sizeEnd[k], key); hset_put(sets[k], key, (uint32_t)c->nbest); }
             gen++;
         }
-        if (!feof(in)) die("input stream ended with unparsed data");
         int st = pclose(in); if (st != 0) { fprintf(stderr, "ERROR: nauty slice %d/%d exited with status %d\n", s, g_dslices, st); exit(2); }
     }
     atomic_fetch_add(&g_dgen, gen); free(c); return NULL;
 }
-static const uint64_t A003087[10] = {1,1,2,6,31,302,5984,243668,20286025,3424938010ULL};
 static int print_sets(const char *hdr){
     int bad = 0;
     if (g_autmismatch) { fprintf(stderr, "ERROR: %d automorphism-count mismatches\n", (int)g_autmismatch); bad = 1; }

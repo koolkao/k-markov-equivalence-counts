@@ -10,3 +10,5 @@ tests/test_bayesball
 .DS_Store
 __pycache__/
 kmec_iso
+kmec_shard
+kmec_cluster
